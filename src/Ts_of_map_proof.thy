@@ -48,38 +48,87 @@ done
 
 lemma tree_induction: 
 "(! cs lbl. (! c : set cs. P c) --> 
-P (Node(lbl,cs))) & (! lbl. P(Leaf(lbl))) ==> P(t)"
+P (Node(lbl,cs))) & (! lbl. P(Leaf(lbl))) ==> P t"
 sorry
 
 declare tree_to_leaves.simps[simp del]
 declare tree_to_subtrees.simps[simp del]
 lemma distinct_keys_in_leaves1:
-"  total_order_key_lte --> ((% t. wellformed_tree ms t --> (distinct (map fst (List.concat (tree_to_leaves t))))) = P) --> (P t)"
-apply (rule)
+"total_order_key_lte --> (wellformed_tree ms t --> (distinct (map fst (List.concat (tree_to_leaves t)))))"
+apply (subgoal_tac "? P. P = (wellformed_tree ms t --> (distinct (map fst (List.concat (tree_to_leaves t)))))") prefer 2 apply force
+apply (erule exE)
 apply (rule_tac tree_induction) apply rule prefer 2
  (*Leaf*)
  apply (simp add:wellformed_tree_def)
  using distinct_keys_in_leaf apply fast
 
  (*Tree*)
- apply simp
  apply (intro impI allI conjI)
- apply (subgoal_tac "\<forall>c\<in>set cs.
-         wellformed_tree ms c \<longrightarrow> distinct (map fst (concat (tree_to_leaves c))) ") prefer 2  apply force
- apply (drule_tac sym)
- apply simp
- apply (thin_tac "P = _")
- apply (thin_tac "_")
+ apply (subgoal_tac "? cs . (\<forall>c\<in>set cs.
+         (wellformed_tree ms c \<longrightarrow> distinct (map fst (concat (tree_to_leaves c))))) ") prefer 2  apply force
+ apply (thin_tac "P=_")
+ apply (thin_tac "\<forall>c\<in>set cs. total_order_key_lte \<longrightarrow> wellformed_tree ms c \<longrightarrow> distinct (map fst (concat (tree_to_leaves c)))")
  apply (induct_tac cs)
+ apply (erule exE)
  apply (force simp add: tree_to_leaves.simps rev_apply_def)
 
  apply (rename_tac h t)
- apply (subgoal_tac "? rs. rs =  h#t ") prefer 2 apply force
+ apply (clarsimp)
+ apply (subgoal_tac "cs =  h#t ") prefer 2 apply (force intro:FIXME)
+ apply (rename_tac rs ks h t csa)
+ apply (simp add:wellformed_tree_def)
+ (* distinct concat tree_to_leaves h *)
+ apply (subgoal_tac "keys_consistent h & keys_ordered h") prefer 2 apply (force simp add:keys_ordered_def keys_consistent_def rev_apply_def forall_subtrees_def list_all_iff tree_to_subtrees.simps)
+ apply (simp add:rev_apply_def tree_to_leaves.simps)
+  
+ (*this should be solvable with keys_consistent*)
+ (* we can show that all keys are different through keys_consistent and keys_ordered*)
+ apply (subgoal_tac "? h_kvs_set.  UNION (set (tree_to_leaves h)) set = h_kvs_set ") prefer 2 apply force
+ apply (subgoal_tac "? t_kvs_set. (\<Union>x\<in>set t. UNION (set (tree_to_leaves x)) set) = t_kvs_set") prefer 2 apply force
  apply (erule exE)+
- apply (subgoal_tac "keys_consistent h & keys_ordered h") prefer 2 apply (simp add:wellformed_tree_def) apply rule+
- 
+ apply (subgoal_tac "? h_ks_set. (fst ` h_kvs_set) = h_ks_set ") prefer 2 apply force
+ apply (subgoal_tac "? t_ks_set. (fst ` t_kvs_set) = t_ks_set ") prefer 2 apply force
+ apply (erule exE)+
+ apply simp
+ apply (subgoal_tac "! t. (fst ` (set(concat (tree_to_leaves t)))) \<subseteq> set (keys t)")
+ prefer 2 apply (force intro:FIXME) (*this needs to be proved somewhere else through recursion -- I think no need of wf hps*)
+ apply (subgoal_tac "h_ks_set \<subseteq> set(keys h)") prefer 2 apply force
+ apply (subgoal_tac "t_ks_set \<subseteq> (\<Union>x\<in>set t. set (keys x)) ") prefer 2 apply force
+ apply (subgoal_tac "! e : set(keys h). ! e1 : (\<Union>x\<in>set t. set (keys x)).  e ~= e1")
+ prefer 2
+  apply rule
+  apply rule
+  apply (subgoal_tac "key_lt e e1")
+  prefer 2
+   apply (subgoal_tac "length ks = length rs-1") prefer 2 (*I need to use wf_tree in the hp and have a lemma that shows that wf_tree --> wf_subtree -- I think I showed this in insert_step_up*) apply (force intro:FIXME)
+   apply (simp add:keys_consistent_def forall_subtrees_def rev_apply_def keys_consistent_1_def tree_to_subtrees.simps) 
+   apply (subgoal_tac "key_lt e (ks!0)")
+   prefer 2
+    apply (simp add:key_indexes_def check_keys_def) apply (erule conjE)+
+    apply (metis Suc_n_not_le_n atLeastLessThan_iff in_set_conv_nth length_greater_0_conv less_nat_zero_code list.size(3) not_less_eq_eq nth_Cons_0)
+    apply (subgoal_tac "key_le (ks!0) e1")
+    prefer 2
+     (*FIXME this is a bit tricky: 
+     we need to show that ks!0 is smaller than any other ks,
+     then we need to know that e1 is bigger than any other key
+     *)
+     apply (subgoal_tac "? i < length t. e1 : set (keys(rs!Suc i))") prefer 2 apply (metis nth_Cons_Suc in_set_conv_nth)
+     apply (erule exE)
+     apply (erule conjE)+
+     apply (subgoal_tac "key_le (ks!i) e1")
+     prefer 2 
+      apply (force simp add: key_indexes_def atLeast0LessThan lessThan_def check_keys_def)
+     apply (subgoal_tac "i~=0 --> key_lt (ks!0) (ks!i)")
+     prefer 2
+      apply (simp add:keys_ordered_def forall_subtrees_def rev_apply_def tree_to_subtrees.simps set_butlast_lessThan keys_ordered_1_def key_indexes_def atLeast0LessThan lessThan_def check_keys_def nth_append)
+      apply (force intro:FIXME) (*apply (smt One_nat_def Suc_less_eq atLeastLessThan_iff diff_Suc_1 gr0_conv_Suc hd_smallest_in_list_sorted_by_key_lt length_greater_0_conv less_trans_Suc) (*1min proof, may find a better solution but was too cool to have it for free*)*)
+    apply (case_tac i,blast)
+    apply (metis neg_key_lt order_key_lt_le)
+   using key_lt_not_key_le total_order_key_lte_def apply auto[1]
+  apply (simp add: key_lt_implies_neq)
  
 sorry
+
 lemma distinct_keys_in_leaves:
 "!  ms. total_order_key_lte --> wellformed_tree ms t --> distinct (map fst (List.concat (tree_to_leaves t)))"
 
@@ -568,7 +617,44 @@ apply (subgoal_tac "? f'. (if (\<exists>a b. find (\<lambda>x. key_eq k (fst x))
 apply (erule exE)
 apply (subgoal_tac "dest_ts its = (f',ctx)") prefer 2 apply (force intro:FIXME)
 apply (subgoal_tac "(case f' of Inserting_one x \<Rightarrow> tree_to_map x | Inserting_two (t1, x, t2) \<Rightarrow> tree_to_map t1 ++ tree_to_map t2) = map_of kvs(k \<mapsto> v)")
-prefer 2 apply (force intro:FIXME)
+prefer 2
+ (*so here it is simple enough: we have leaf(s) so tree_to_map is a list.
+  The problem is that in any case we have to show that  *)
+ apply (drule_tac t=f' in sym)
+ apply (subgoal_tac "distinct (map fst kvs)") prefer 2  apply (force intro:FIXME)
+ apply (subgoal_tac "distinct (map fst kvs2)") prefer 2  apply (force intro:FIXME) (*FIXME I need a lemma that says that ordered_list_insert leaves a list distinct*)
+ apply (subgoal_tac "? kvs'. ((k,v)#kvs) = kvs'") prefer 2 apply force
+ apply (erule exE)
+ apply (subgoal_tac "map_of kvs(k \<mapsto> v) = map_of(kvs')") prefer 2 apply force
+ apply (subgoal_tac "set(map fst kvs2) = set(map fst (kvs'))") prefer 2 apply (fast intro:FIXME)
+ apply (subgoal_tac "\<forall>k\<in>set (map fst kvs2). map_of kvs2 k = map_of (kvs') k") prefer 2 apply (force intro:FIXME)
+ apply (case_tac "(\<exists>a b. find (\<lambda>x. key_eq k (fst x)) kvs = Some (a, b)) \<or> length kvs < max_leaf_size")
+ (* f' = inserting_one*)
+  apply (simp add:tree_to_map_def)
+  using map_of_eqI apply (smt imageE list.set_map) 
+
+ (* f' = inserting_two*)
+ apply (simp add:split_leaf_kvs_def Let_def)
+  apply (simp add:tree_to_map_def)
+  apply (subgoal_tac "? left. take min_leaf_size kvs2 = left") prefer 2 apply force
+  apply (subgoal_tac "? right. drop min_leaf_size kvs2 = right") prefer 2 apply force
+  apply (erule exE)+
+  apply (subgoal_tac "map_of (left) ++ map_of (right) = map_of kvs2")
+  prefer 2
+   apply (subgoal_tac "map_of (left) ++ map_of (right) = map_of (right) ++ map_of (left)")
+   prefer 2
+    apply (subgoal_tac "dom (map_of (left)) \<inter> dom (map_of (right)) = {}")
+    prefer 2
+     apply (simp add:dom_map_of_conv_image_fst)
+     apply (subgoal_tac "set (take min_leaf_size (map fst kvs2)) \<inter> set (drop min_leaf_size (map fst kvs2)) = {}")
+     prefer 2 
+      using set_take_disj_set_drop_if_distinct apply (metis order_refl)
+     apply (force simp add: drop_map take_map)
+    using map_add_comm apply fastforce
+   apply (subgoal_tac "map_of (right) ++ map_of (left) = map_of ( (left)@(right))") prefer 2 using map_of_append apply auto[1]
+   apply (subgoal_tac "left@right = kvs2") prefer 2 using append_take_drop_id apply force
+   apply force
+  using map_of_eqI apply (smt imageE list.set_map)
 apply simp
 apply (simp add:tree_to_map_def)
 apply (subgoal_tac "ctx ~= [] --> map_le (map_of kvs) (ctx_to_map ctx)")
@@ -585,9 +671,7 @@ prefer 2
   apply (subgoal_tac "(Leaf kvs) : set rs & wellformed_tree (case ctx_t of Nil => (Some Small_root_node_or_leaf) | _ => None) (Node(ks,rs))")
   prefer 2
    apply (subgoal_tac "i < length rs") prefer 2 apply (force intro:FIXME)
-   apply (subgoal_tac "length ks = length rs -1") 
-   prefer 2
-    apply (force intro:FIXME) 
+   apply (subgoal_tac "length ks = length rs -1") prefer 2 apply (force intro:FIXME) 
    apply (case_tac ctx_t)
     apply (simp add:wellformed_fts_def wellformed_fts_1_def subtree_indexes_def wellformed_context_1_def)
     apply (case_tac " get_lower_upper_keys_for_node_t ks l i u",force)
@@ -682,20 +766,50 @@ k_in_map_and_f
 (*end find map invariant*)
 
 lemma invariant_find_map: "invariant_find_map"
-apply (simp add:invariant_find_map_def)
-apply clarsimp
-apply (rename_tac f ctx)
-apply (rule)
- (*fts_to_map fts k = Some v \<longrightarrow> (\<exists>x\<in>set (case f of Node (l, cs) \<Rightarrow> cs |> map tree_to_leaves |> concat | Leaf l \<Rightarrow> [l]). (k, v) \<in> set x)*)
- apply clarsimp
- (*it seems that map_of_eq_Some_iff could be useful, but I need distinct on the keys.
-   Also wf_fts1 tells us that the key is in the focus.
- *)
- apply (simp add:fts_to_map_def rev_apply_def)
- apply (force intro:FIXME)
-
- (*fts_to_map fts k \<noteq> Some v \<longrightarrow> (\<forall>x\<in>set (case f of Node (l, cs) \<Rightarrow> cs |> map tree_to_leaves |> concat | Leaf l \<Rightarrow> [l]). (k, v) \<notin> set x)*)
- apply (force intro:FIXME)
+apply (unfold invariant_find_map_def)
+apply (rule allI)+
+apply (subgoal_tac "? m . fts_to_map fts = m") prefer 2 apply force
+apply (subgoal_tac "? k f ctx . dest_f_tree_stack fts = (k, f, ctx)") prefer 2 apply (force intro:FIXME)
+apply (erule exE)+
+apply (subgoal_tac "? f_leaves . concat (tree_to_leaves f) = f_leaves") prefer 2 apply force
+apply (erule exE)
+apply simp
+apply (subgoal_tac "distinct (map fst f_leaves)") prefer 2 apply (force intro:FIXME)
+apply (subgoal_tac "total_order_key_lte --> wellformed_fts fts --> m k = map_of f_leaves k")
+prefer 2
+ apply (subgoal_tac "fts = Tree_stack((Focus (k,f)),ctx)") prefer 2 apply (force intro:FIXME)
+ apply (case_tac ctx,simp add:wellformed_fts_def fts_to_map_def rev_apply_def tree_to_map_def)
+ (*ctx = ctx_h ctx_t*)
+ apply (rename_tac ctx_h ctx_t)
+ apply (simp add:fts_to_map_def rev_apply_def tree_to_map_def)
+ apply rule+ 
+ apply (subgoal_tac "? pks prs. (fts_to_tree fts = Node(pks,prs)) & (f : set prs)")
+ prefer 2
+  using list_replace_1_at_n_def
+  apply (force intro:FIXME)
+ apply (erule exE)+
+ apply (subgoal_tac "map_le (map_of f_leaves) (tree_to_map (Node(pks,prs)))")
+ prefer 2
+  apply (subgoal_tac "wellformed_tree None (Node(pks,prs))")
+   prefer 2
+    apply (simp add:wellformed_fts_def)
+    apply (force intro:FIXME)
+  using map_le_subtrees using tree_to_leaves.simps tree_to_map_def apply force
+ apply (simp add:tree_to_map_def)
+ apply (subgoal_tac "? left right . m = map_of right ++ map_of f_leaves ++ map_of left") prefer 2 apply (metis map_addE2)
+ apply (erule exE)+
+ apply (erule conjE)
+ apply (simp add:map_le_def)
+ apply (subgoal_tac "(~ (k : dom (map_of left))) & (~(k : dom(map_of right)))")
+ prefer 2
+  using wellformed_fts_1_def check_keys_def
+  apply (force intro:FIXME)
+ apply (case_tac "k:(dom(map_of f_leaves))")
+  apply simp
+  apply (subgoal_tac "m k = None") prefer 2 apply (blast)
+  apply force
+apply force
 done
+
 end
 (* proof\ ts_to_map_invariant\ \[2/5\]:1 ends here *)
